@@ -1,0 +1,78 @@
+.media-controls {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  justify-content: center;
+}
+
+.control-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-lg) var(--spacing-xl);
+  background: var(--color-surface);
+  border: var(--color-border-thick) solid var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  min-width: 100px;
+  box-shadow: var(--shadow-sm);
+}
+
+.control-btn:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.control-btn:active {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.control-btn.disabled {
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+.control-btn.disabled:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.leave-btn {
+  border-color: var(--color-error);
+  color: white;
+  background: var(--color-error);
+}
+
+.leave-btn:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: white;
+  box-shadow: var(--shadow-lg);
+}
+
+.control-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .media-controls {
+    gap: var(--spacing-sm);
+  }
+
+  .control-btn {
+    padding: var(--spacing-md);
+    min-width: 70px;
+  }
+
+  .control-label {
+    font-size: 0.65rem;
+  }
+}
