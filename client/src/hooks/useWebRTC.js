@@ -7,20 +7,17 @@ export const useWebRTC = (roomId, socket, localStream) => {
   useEffect(() => {
     if (!socket || !localStream) return;
 
-    // Handle existing users in room
     socket.on('existing-users', ({ users }) => {
       users.forEach(userId => {
         createPeerConnection(userId, true);
       });
     });
 
-    // User joined - create offer
     socket.on('user-joined', ({ userId, userName }) => {
       console.log('User joined:', userId, userName);
       createPeerConnection(userId, true, userName);
     });
 
-    // Receive offer - create answer
     socket.on('offer', async ({ from, offer, userName }) => {
       console.log('Received offer from:', from);
       const pc = createPeerConnection(from, false, userName);
@@ -35,7 +32,6 @@ export const useWebRTC = (roomId, socket, localStream) => {
       }
     });
 
-    // Receive answer
     socket.on('answer', async ({ from, answer }) => {
       console.log('Received answer from:', from);
       const pc = peersRef.current[from]?.peer;
@@ -48,7 +44,6 @@ export const useWebRTC = (roomId, socket, localStream) => {
       }
     });
 
-    // Handle ICE candidate
     socket.on('ice-candidate', async ({ from, candidate }) => {
       const pc = peersRef.current[from]?.peer;
       if (pc && candidate) {
@@ -60,7 +55,6 @@ export const useWebRTC = (roomId, socket, localStream) => {
       }
     });
 
-    // User left
     socket.on('user-left', ({ userId }) => {
       console.log('User left:', userId);
       if (peersRef.current[userId]) {
@@ -96,14 +90,12 @@ export const useWebRTC = (roomId, socket, localStream) => {
 
     const pc = new RTCPeerConnection(config);
 
-    // Add local stream tracks to peer connection
     if (localStream) {
       localStream.getTracks().forEach(track => {
         pc.addTrack(track, localStream);
       });
     }
 
-    // Handle incoming stream
     pc.ontrack = (event) => {
       console.log('Received track from:', userId);
       if (event.streams && event.streams[0]) {
@@ -116,7 +108,6 @@ export const useWebRTC = (roomId, socket, localStream) => {
       }
     };
 
-    // Handle ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         socket.emit('ice-candidate', {
@@ -126,22 +117,16 @@ export const useWebRTC = (roomId, socket, localStream) => {
       }
     };
 
-    // Handle connection state
     pc.onconnectionstatechange = () => {
       console.log('Connection state:', pc.connectionState);
-      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-        console.log('Connection failed with:', userId);
-      }
     };
 
-    // Store peer connection
     peersRef.current[userId] = {
       peer: pc,
       userName
     };
     setPeers({ ...peersRef.current });
 
-    // Create offer if initiator
     if (isInitiator) {
       pc.createOffer()
         .then(offer => pc.setLocalDescription(offer))
