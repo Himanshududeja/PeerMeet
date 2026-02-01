@@ -15,13 +15,12 @@ export const useWebRTC = (roomId, socket, localStream) => {
 
     socket.on('user-joined', ({ userId, userName }) => {
       console.log('User joined:', userId, userName);
-      createPeerConnection(userId, true, userName);
     });
 
     socket.on('offer', async ({ from, offer, userName }) => {
       console.log('Received offer from:', from);
       const pc = createPeerConnection(from, false, userName);
-      
+
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await pc.createAnswer();
@@ -35,7 +34,7 @@ export const useWebRTC = (roomId, socket, localStream) => {
     socket.on('answer', async ({ from, answer }) => {
       console.log('Received answer from:', from);
       const pc = peersRef.current[from]?.peer;
-      
+
       // Only set remote description if we're in the right state
       if (pc && pc.signalingState !== 'stable') {
         try {
