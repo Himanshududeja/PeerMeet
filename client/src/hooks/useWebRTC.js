@@ -35,9 +35,12 @@ export const useWebRTC = (roomId, socket, localStream) => {
     socket.on('answer', async ({ from, answer }) => {
       console.log('Received answer from:', from);
       const pc = peersRef.current[from]?.peer;
-      if (pc) {
+      
+      // Only set remote description if we're in the right state
+      if (pc && pc.signalingState !== 'stable') {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(answer));
+          console.log('Answer set successfully');
         } catch (err) {
           console.error('Error setting remote description:', err);
         }
@@ -119,6 +122,9 @@ export const useWebRTC = (roomId, socket, localStream) => {
 
     pc.onconnectionstatechange = () => {
       console.log('Connection state:', pc.connectionState);
+      if (pc.connectionState === 'connected') {
+        console.log('✅ Connected to:', userId);
+      }
     };
 
     peersRef.current[userId] = {
