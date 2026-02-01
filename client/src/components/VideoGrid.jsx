@@ -54,13 +54,17 @@ const VideoGrid = ({ localStream, peers, localUserName }) => {
       )}
 
       {/* Remote Videos */}
-      {Object.entries(peers).map(([peerId, { peer, userName }]) => {
-        if (peer && peer.streams && peer.streams[0]) {
+      {Object.entries(peers).map(([peerId, peerData]) => {
+        // Access stream from peerData
+        const stream = peerData.stream;
+        const userName = peerData.userName || 'Anonymous';
+        
+        if (stream) {
           return (
             <VideoTile
               key={peerId}
-              stream={peer.streams[0]}
-              userName={userName || 'Anonymous'}
+              stream={stream}
+              userName={userName}
               isLocal={false}
               muted={false}
             />
