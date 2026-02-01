@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import SimplePeer from 'simple-peer';
+import Peer from 'simple-peer';
 
 export const useWebRTC = (roomId, socket, localStream) => {
   const [peers, setPeers] = useState({});
@@ -60,7 +60,7 @@ export const useWebRTC = (roomId, socket, localStream) => {
 
     return () => {
       Object.values(peersRef.current).forEach(({ peer }) => {
-        peer.destroy();
+        if (peer) peer.destroy();
       });
       socket.off('existing-users');
       socket.off('user-joined');
@@ -72,7 +72,7 @@ export const useWebRTC = (roomId, socket, localStream) => {
   }, [socket, localStream, roomId]);
 
   const createPeer = (userToSignal, callerId, stream) => {
-    const peer = new SimplePeer({
+    const peer = new Peer({
       initiator: true,
       trickle: true,
       stream,
@@ -80,7 +80,9 @@ export const useWebRTC = (roomId, socket, localStream) => {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' }
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' }
         ]
       }
     });
@@ -97,7 +99,7 @@ export const useWebRTC = (roomId, socket, localStream) => {
   };
 
   const addPeer = (callerId, incomingSignal, stream) => {
-    const peer = new SimplePeer({
+    const peer = new Peer({
       initiator: false,
       trickle: true,
       stream,
@@ -105,7 +107,9 @@ export const useWebRTC = (roomId, socket, localStream) => {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' }
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' }
         ]
       }
     });
