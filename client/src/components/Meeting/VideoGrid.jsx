@@ -1,88 +1,78 @@
-import { useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useRef } from 'react';
+import './VideoGrid.css';
 
-const VideoGrid = ({ localStream, peers, localUserName }) => {
-  const localVideoRef = useRef();
+const VideoTile = ({ stream, userName, isLocal, muted }) => {
+  const videoRef = useRef();
 
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
     }
-  }, [localStream]);
-
-  const peerEntries = Object.entries(peers);
+  }, [stream]);
 
   return (
-    <div className="video-grid">
-      {/* Local Video */}
-      <motion.div
-        className="video-container local-video"
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5 }}
-      >
-        <video
-          ref={localVideoRef}
-          autoPlay
-          muted
-          className="video"
-        />
-        <div className="video-label">
-          {localUserName} (You)
-        </div>
-      </motion.div>
-
-      {/* Peer Videos */}
-      {peerEntries.map(([peerId, peer], index) => (
-        <motion.div
-          key={peerId}
-          className="video-container"
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5, delay: (index + 1) * 0.1 }}
-        >
-          <PeerVideo peer={peer} peerId={peerId} />
-        </motion.div>
-      ))}
+    <div className="video-tile">
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted={muted}
+        className="video-element"
+      />
+      <div className="video-overlay">
+        <span className="video-name text-mono">
+          {isLocal ? `${userName} (You)` : userName}
+        </span>
+      </div>
+      {isLocal && <div className="local-indicator">LOCAL</div>}
     </div>
   );
 };
 
-const PeerVideo = ({ peer, peerId }) => {
-  const videoRef = useRef();
+const VideoGrid = ({ localStream, peers, localUserName }) => {
+  const peerCount = Object.keys(peers).length;
+  const totalVideos = peerCount + 1; // +1 for local stream
 
-  useEffect(() => {
-    if (peer && videoRef.current) {
-      peer.on('stream', (stream) => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      });
-
-      peer.on('error', (err) => {
-        console.error('Peer video error:', err);
-      });
-    }
-
-    return () => {
-      if (peer) {
-        peer.off('stream');
-        peer.off('error');
-      }
-    };
-  }, [peer]);
+  const getGridClass = () => {
+    if (totalVideos === 1) return 'grid-1';
+    if (totalVideos === 2) return 'grid-2';
+    if (totalVideos <= 4) return 'grid-4';
+    if (totalVideos <= 6) return 'grid-6';
+    return 'grid-many';
+  };
 
   return (
-    <>
-      <video
-        ref={videoRef}
-        autoPlay
-        className="video"
-      />
-      <div className="video-label">
-        Peer {peerId.slice(0, 4)}
-      </div>
-    </>
+    <div className={`video-grid ${getGridClass()}`}>
+      {/* Local Video */}
+      {localStream && (
+        <VideoTile
+          stream={localStream}
+          userName={localUserName}
+          isLocal={true}
+          muted={true}
+        />
+      )}
+
+      {/* Remote Videos */}
+      {Object.entries(peers).map(([peerId, peerData]) => {
+        // Get stream from peerData, not from peer.streams
+        const stream = peerData.stream;
+        const userName = peerData.userName || 'Anonymous';
+        
+        if (stream) {
+          return (
+            <VideoTile
+              key={peerId}
+              stream={stream}
+              userName={userName}
+              isLocal={false}
+              muted={false}
+            />
+          );
+        }
+        return null;
+      })}
+    </div>
   );
 };
 
