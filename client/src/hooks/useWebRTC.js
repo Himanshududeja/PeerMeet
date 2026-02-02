@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 
-export const useWebRTC = (roomId, socket, localStream, screenStream) => {
+export const useWebRTC = (roomId, socket, localStream, screenStream, localUserName = 'Anonymous') => {
   const [peers, setPeers] = useState({});
   const peersRef = useRef({});
 
   useEffect(() => {
-    if (!socket || !localStream) return;
+    if (!socket) return;
 
     socket.on('existing-users', ({ users }) => {
       console.log('📡 Found existing users:', users.length);
@@ -33,7 +33,11 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         console.log('📤 Sending answer to:', from);
-        socket.emit('answer', { callerId: from, signal: answer });
+        socket.emit('answer', {
+          callerId: from,
+          signal: answer,
+          userName: localUserName
+        });
       } catch (err) {
         console.error('❌ Error handling offer:', err);
       }
@@ -86,7 +90,25 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
       socket.off('ice-candidate');
       socket.off('user-left');
     };
-  }, [socket, localStream, roomId]);
+  }, [socket, roomId, localUserName]);
+
+  // Effect to add tracks when localStream arrives or changes
+  useEffect(() => {
+    if (!localStream) return;
+
+    console.log('🎥 Local stream ready, updating peer connections');
+    Object.values(peersRef.current).forEach(({ peer }) => {
+      const currentSenders = peer.getSenders();
+      localStream.getTracks().forEach(track => {
+        const sender = currentSenders.find(s => s.track && s.track.kind === track.kind);
+        if (sender) {
+          sender.replaceTrack(track).catch(err => console.error('Error replacing track:', err));
+        } else {
+          peer.addTrack(track, localStream);
+        }
+      });
+    });
+  }, [localStream]);
 
   // Handle screen share - replace video track in all peer connections
   useEffect(() => {
@@ -166,7 +188,7 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
 
     const pc = new RTCPeerConnection(config);
 
-    // Always add local stream tracks initially
+    // Add local stream tracks if available
     if (localStream) {
       localStream.getTracks().forEach(track => {
         pc.addTrack(track, localStream);
@@ -191,7 +213,7 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
     pc.ontrack = (event) => {
       console.log('📡 Received track from:', userId, 'Kind:', event.track.kind);
       if (event.streams && event.streams[0]) {
-        // preserve the existing username if we already have it
+        console.log('📺 Stream added for:', userId);
         const currentName = peersRef.current[userId]?.userName || userName;
 
         peersRef.current[userId] = {
@@ -201,6 +223,8 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
           stream: event.streams[0]
         };
         setPeers({ ...peersRef.current });
+      } else {
+        console.warn('⚠️ Received track but no stream for:', userId);
       }
     };
 
@@ -215,10 +239,6 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
 
     pc.oniceconnectionstatechange = () => {
       console.log(`ICE Connection state with ${userId}:`, pc.iceConnectionState);
-      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-        console.warn('ICE connection failed or disconnected. Attempting restart...');
-        // In a full implementation, you'd handle ICE restart here
-      }
     };
 
     pc.onconnectionstatechange = () => {
@@ -242,7 +262,8 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
           socket.emit('offer', {
             userToSignal: userId,
             callerId: socket.id,
-            signal: pc.localDescription
+            signal: pc.localDescription,
+            userName: localUserName
           });
         })
         .catch(err => console.error('Error creating offer:', err));
