@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-export const useChat = (socket, roomId, onMessageReceived) => {
+export const useChat = (socket, roomId) => {
   const [messages, setMessages] = useState([]);
 
   useEffect(() => {
@@ -8,9 +8,6 @@ export const useChat = (socket, roomId, onMessageReceived) => {
 
     socket.on('chat-message', (message) => {
       setMessages(prev => [...prev, message]);
-      if (onMessageReceived && message.userId !== socket.id) {
-        onMessageReceived();
-      }
     });
 
     socket.on('chat-history', (history) => {
@@ -21,16 +18,16 @@ export const useChat = (socket, roomId, onMessageReceived) => {
       socket.off('chat-message');
       socket.off('chat-history');
     };
-  }, [socket, onMessageReceived]);
+  }, [socket]);
 
-  const sendMessage = (text) => {
-    if (!text.trim() || !socket) return;
-
+  const sendMessage = (messageData) => {
+    if (!socket) return;
+    
     const message = {
       id: Date.now(),
-      text: text.trim(),
       timestamp: new Date().toISOString(),
-      userId: socket.id
+      userId: socket.id,
+      ...messageData
     };
 
     socket.emit('send-message', { roomId, message });

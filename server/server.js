@@ -33,7 +33,21 @@ const rooms = new Map();
 const getUsersInRoom = (roomId) => {
     const room = io.sockets.adapter.rooms.get(roomId);
     if (!room) return [];
-    return Array.from(room);
+
+    // Get user details from our map
+    const users = [];
+    if (rooms.has(roomId)) {
+        const roomUsers = rooms.get(roomId);
+        room.forEach(socketId => {
+            if (roomUsers.has(socketId)) {
+                users.push({
+                    id: socketId,
+                    userName: roomUsers.get(socketId).userName
+                });
+            }
+        });
+    }
+    return users;
 };
 
 // Socket.io event handlers
@@ -44,7 +58,7 @@ io.on('connection', (socket) => {
     socket.on('join-room', ({ roomId, userName }) => {
         console.log(`👤 ${userName} (${socket.id}) joining room: ${roomId}`);
 
-        // Get existing users before joining
+        // Get existing users before joining (this will now return objects)
         const existingUsers = getUsersInRoom(roomId);
 
         // Join the room
@@ -72,20 +86,22 @@ io.on('connection', (socket) => {
     });
 
     // WebRTC signaling - offer
-    socket.on('offer', ({ userToSignal, callerId, signal }) => {
-        console.log(`📡 Offer from ${callerId} to ${userToSignal}`);
+    socket.on('offer', ({ userToSignal, callerId, signal, userName }) => {
+        console.log(`📡 Offer from ${callerId} (${userName}) to ${userToSignal}`);
         io.to(userToSignal).emit('offer', {
             from: callerId,
-            offer: signal
+            offer: signal,
+            userName
         });
     });
 
     // WebRTC signaling - answer
-    socket.on('answer', ({ callerId, signal }) => {
-        console.log(`📡 Answer to ${callerId}`);
+    socket.on('answer', ({ callerId, signal, userName }) => {
+        console.log(`📡 Answer to ${callerId} from ${userName}`);
         io.to(callerId).emit('answer', {
             from: socket.id,
-            answer: signal
+            answer: signal,
+            userName
         });
     });
 
@@ -181,7 +197,7 @@ app.get('/api/rooms/:roomId', (req, res) => {
     });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5555;
 
 httpServer.listen(PORT, () => {
     console.log(`

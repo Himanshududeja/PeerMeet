@@ -4,6 +4,7 @@ import { useSocket } from '../context/SocketContext';
 import { useMediaStream } from '../hooks/useMediaStream';
 import { useWebRTC } from '../hooks/useWebRTC';
 import { useChat } from '../hooks/useChat';
+import { useScreenShare } from '../hooks/useScreenShare';
 import VideoGrid from '../components/Meeting/VideoGrid';
 import MediaControls from '../components/Controls/MediaControls';
 import ChatPanel from '../components/Chat/ChatPanel';
@@ -26,6 +27,7 @@ const Room = () => {
   const [participants, setParticipants] = useState([]);
   
   const { stream, audioEnabled, videoEnabled, toggleAudio, toggleVideo } = useMediaStream();
+  const { isSharing, startScreenShare, stopScreenShare } = useScreenShare();
   const { peers } = useWebRTC(roomId, socket, stream);
   const { messages, sendMessage } = useChat(socket, roomId);
 
@@ -53,9 +55,24 @@ const Room = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleToggleScreenShare = async () => {
+    if (isSharing) {
+      stopScreenShare();
+    } else {
+      const screenStream = await startScreenShare();
+      if (screenStream) {
+        // Notify other users about screen sharing
+        socket.emit('screen-share-started', { roomId, userId: socket.id });
+      }
+    }
+  };
+
   const leaveRoom = () => {
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
+    }
+    if (isSharing) {
+      stopScreenShare();
     }
     navigate('/');
   };
@@ -189,6 +206,8 @@ const Room = () => {
           videoEnabled={videoEnabled}
           onToggleAudio={toggleAudio}
           onToggleVideo={toggleVideo}
+          isScreenSharing={isSharing}
+          onToggleScreenShare={handleToggleScreenShare}
           onLeave={leaveRoom}
         />
       </div>

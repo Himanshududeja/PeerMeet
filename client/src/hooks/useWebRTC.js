@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-export const useWebRTC = (roomId, socket, localStream) => {
+export const useWebRTC = (roomId, socket, localStream, localUserName = 'Anonymous') => {
   const [peers, setPeers] = useState({});
   const peersRef = useRef({});
 
@@ -8,8 +8,11 @@ export const useWebRTC = (roomId, socket, localStream) => {
     if (!socket || !localStream) return;
 
     socket.on('existing-users', ({ users }) => {
-      users.forEach(userId => {
-        createPeerConnection(userId, true);
+      users.forEach(user => {
+        // Handle both old format (id string) and new format (user object)
+        const userId = user.id || user;
+        const userName = user.userName || 'Anonymous';
+        createPeerConnection(userId, true, userName);
       });
     });
 
@@ -18,22 +21,32 @@ export const useWebRTC = (roomId, socket, localStream) => {
     });
 
     socket.on('offer', async ({ from, offer, userName }) => {
-      console.log('Received offer from:', from);
+      console.log('Received offer from:', from, userName);
       const pc = createPeerConnection(from, false, userName);
 
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        socket.emit('answer', { callerId: from, signal: answer });
+        socket.emit('answer', {
+          callerId: from,
+          signal: answer,
+          userName: localUserName
+        });
       } catch (err) {
         console.error('Error handling offer:', err);
       }
     });
 
-    socket.on('answer', async ({ from, answer }) => {
+    socket.on('answer', async ({ from, answer, userName }) => {
       console.log('Received answer from:', from);
       const pc = peersRef.current[from]?.peer;
+
+      // Update username if provided
+      if (peersRef.current[from] && userName) {
+        peersRef.current[from].userName = userName;
+        setPeers({ ...peersRef.current });
+      }
 
       // Only set remote description if we're in the right state
       if (pc && pc.signalingState !== 'stable') {
@@ -77,9 +90,11 @@ export const useWebRTC = (roomId, socket, localStream) => {
       socket.off('ice-candidate');
       socket.off('user-left');
     };
-  }, [socket, localStream, roomId]);
+  }, [socket, localStream, roomId, localUserName]);
 
   const createPeerConnection = (userId, isInitiator, userName = 'Anonymous') => {
+    if (peersRef.current[userId]) return peersRef.current[userId].peer;
+
     const config = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -103,7 +118,7 @@ export const useWebRTC = (roomId, socket, localStream) => {
       if (event.streams && event.streams[0]) {
         peersRef.current[userId] = {
           peer: pc,
-          userName,
+          userName: peersRef.current[userId]?.userName || userName,
           stream: event.streams[0]
         };
         setPeers({ ...peersRef.current });
@@ -139,7 +154,8 @@ export const useWebRTC = (roomId, socket, localStream) => {
           socket.emit('offer', {
             userToSignal: userId,
             callerId: socket.id,
-            signal: pc.localDescription
+            signal: pc.localDescription,
+            userName: localUserName
           });
         })
         .catch(err => console.error('Error creating offer:', err));

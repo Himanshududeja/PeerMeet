@@ -42,6 +42,17 @@
   box-shadow: var(--shadow-md);
 }
 
+.control-btn.active {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+.control-btn.active:hover {
+  background: #0891b2;
+  border-color: #0891b2;
+}
+
 .leave-btn {
   border-color: var(--color-error);
   color: white;

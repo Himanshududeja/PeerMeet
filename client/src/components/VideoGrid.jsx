@@ -36,8 +36,10 @@ const VideoGrid = ({ localStream, peers, localUserName }) => {
   const getGridClass = () => {
     if (totalVideos === 1) return 'grid-1';
     if (totalVideos === 2) return 'grid-2';
-    if (totalVideos <= 4) return 'grid-4';
-    if (totalVideos <= 6) return 'grid-6';
+    if (totalVideos === 3) return 'grid-3';
+    if (totalVideos === 4) return 'grid-4';
+    if (totalVideos === 5) return 'grid-5';
+    if (totalVideos === 6) return 'grid-6';
     return 'grid-many';
   };
 
@@ -55,7 +57,7 @@ const VideoGrid = ({ localStream, peers, localUserName }) => {
 
       {/* Remote Videos */}
       {Object.entries(peers).map(([peerId, peerData]) => {
-        // Access stream from peerData
+        // Get stream from peerData, not from peer.streams
         const stream = peerData.stream;
         const userName = peerData.userName || 'Anonymous';
         
