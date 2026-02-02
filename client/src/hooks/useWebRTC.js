@@ -150,11 +150,24 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
     const pc = new RTCPeerConnection(config);
 
     // Always add local stream tracks initially
-    // Screen sharing tracks are swapped in via replaceTrack in the useEffect
     if (localStream) {
       localStream.getTracks().forEach(track => {
         pc.addTrack(track, localStream);
       });
+    }
+
+    // If we are already sharing screen, replace the video track immediately for this new peer
+    if (screenStream) {
+      const screenVideoTrack = screenStream.getVideoTracks()[0];
+      const senders = pc.getSenders();
+      const videoSender = senders.find(sender =>
+        sender.track && sender.track.kind === 'video'
+      );
+
+      if (videoSender && screenVideoTrack) {
+        videoSender.replaceTrack(screenVideoTrack)
+          .catch(err => console.error('Error replacing track for new peer:', err));
+      }
     }
 
     pc.ontrack = (event) => {

@@ -18,21 +18,21 @@ const Room = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { socket, connected } = useSocket();
-  
+
   const userName = location.state?.userName || 'Anonymous';
-  
+
   const [showChat, setShowChat] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
   const [copied, setCopied] = useState(false);
   const [participants, setParticipants] = useState([]);
-  
+
   const { stream, audioEnabled, videoEnabled, toggleAudio, toggleVideo } = useMediaStream();
   const { isSharing, screenStream, startScreenShare, stopScreenShare } = useScreenShare();
   const { peers } = useWebRTC(roomId, socket, stream, screenStream); // Pass screenStream
   const { messages, sendMessage } = useChat(socket, roomId);
 
   useEffect(() => {
-    if (!socket || !connected) return;
+    if (!socket || !connected || !stream) return;
 
     // Join room
     socket.emit('join-room', { roomId, userName });
@@ -46,7 +46,7 @@ const Room = () => {
       socket.emit('leave-room', roomId);
       socket.off('participants-update');
     };
-  }, [socket, connected, roomId, userName]);
+  }, [socket, connected, roomId, userName, stream]);
 
   const copyRoomLink = () => {
     const link = `${window.location.origin}/room/${roomId}`;
@@ -87,8 +87,8 @@ const Room = () => {
           <div className="room-id-container">
             <span className="text-mono room-label">ROOM:</span>
             <code className="room-id">{roomId}</code>
-            <button 
-              className="btn-icon" 
+            <button
+              className="btn-icon"
               onClick={copyRoomLink}
               title="Copy room link"
             >
@@ -116,7 +116,7 @@ const Room = () => {
           >
             <Users size={20} />
           </button>
-          
+
           <button
             className={`btn-icon ${showChat ? 'active' : ''}`}
             onClick={() => {
