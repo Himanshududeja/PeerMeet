@@ -11,7 +11,7 @@ const httpServer = createServer(app);
 
 // CORS configuration
 app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: [process.env.CLIENT_URL || 'http://localhost:3000', 'https://peer-meet-git-main-himanshus-projects-67799945.vercel.app'],
     methods: ['GET', 'POST']
 }));
 
@@ -20,7 +20,7 @@ app.use(express.json());
 // Socket.io setup
 const io = new Server(httpServer, {
     cors: {
-        origin: process.env.CLIENT_URL || 'http://localhost:3000',
+        origin: [process.env.CLIENT_URL || 'http://localhost:3000', 'https://peer-meet-git-main-himanshus-projects-67799945.vercel.app'],
         methods: ['GET', 'POST']
     },
     transports: ['websocket', 'polling']
