@@ -137,6 +137,16 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
   }, [screenStream, localStream]);
 
   const createPeerConnection = (userId, isInitiator, userName = 'Anonymous') => {
+    // If connection already exists and is not closed, reuse it
+    if (peersRef.current[userId] &&
+      peersRef.current[userId].peer.connectionState !== 'closed' &&
+      peersRef.current[userId].peer.connectionState !== 'failed') {
+      console.log('Using existing peer connection for:', userId);
+      return peersRef.current[userId].peer;
+    }
+
+    console.log('Creating new peer connection for:', userId, 'as initiator:', isInitiator);
+
     const config = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -166,16 +176,21 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
 
       if (videoSender && screenVideoTrack) {
         videoSender.replaceTrack(screenVideoTrack)
+          .then(() => console.log('Screen track applied to new peer:', userId))
           .catch(err => console.error('Error replacing track for new peer:', err));
       }
     }
 
     pc.ontrack = (event) => {
-      console.log('Received track from:', userId);
+      console.log('📡 Received track from:', userId, 'Kind:', event.track.kind);
       if (event.streams && event.streams[0]) {
+        // preserve the existing username if we already have it
+        const currentName = peersRef.current[userId]?.userName || userName;
+
         peersRef.current[userId] = {
+          ...peersRef.current[userId],
           peer: pc,
-          userName,
+          userName: currentName,
           stream: event.streams[0]
         };
         setPeers({ ...peersRef.current });
@@ -191,16 +206,25 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
       }
     };
 
-    pc.onconnectionstatechange = () => {
-      console.log('Connection state:', pc.connectionState);
-      if (pc.connectionState === 'connected') {
-        console.log('✅ Connected to:', userId);
+    pc.oniceconnectionstatechange = () => {
+      console.log(`ICE Connection state with ${userId}:`, pc.iceConnectionState);
+      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+        console.warn('ICE connection failed or disconnected. Attempting restart...');
+        // In a full implementation, you'd handle ICE restart here
       }
     };
 
+    pc.onconnectionstatechange = () => {
+      console.log(`Connection state with ${userId}:`, pc.connectionState);
+      if (pc.connectionState === 'connected') {
+        console.log('✅ Fully connected to:', userId);
+      }
+    };
+
+    // Store the basic structure before signaling starts
     peersRef.current[userId] = {
       peer: pc,
-      userName
+      userName: peersRef.current[userId]?.userName || userName
     };
     setPeers({ ...peersRef.current });
 
