@@ -28,7 +28,7 @@ const Room = () => {
 
   const { stream, audioEnabled, videoEnabled, toggleAudio, toggleVideo } = useMediaStream();
   const { isSharing, screenStream, startScreenShare, stopScreenShare } = useScreenShare();
-  const { peers } = useWebRTC(roomId, socket, stream, screenStream); // Pass screenStream
+  const { peers } = useWebRTC(roomId, socket, stream, screenStream, userName); // Pass screenStream
   const { messages, sendMessage } = useChat(socket, roomId);
 
   useEffect(() => {
