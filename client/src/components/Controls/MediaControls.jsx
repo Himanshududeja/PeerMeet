@@ -1,4 +1,4 @@
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Monitor, MonitorOff } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Monitor, MonitorOff, SwitchCamera } from 'lucide-react';
 import './MediaControls.css';
 
 const MediaControls = ({
@@ -8,7 +8,9 @@ const MediaControls = ({
   onToggleVideo,
   onLeave,
   isScreenSharing,
-  onToggleScreenShare
+  onToggleScreenShare,
+  onSwitchCamera,
+  showCameraSwitch = true
 }) => {
   return (
     <div className="media-controls">
@@ -41,6 +43,17 @@ const MediaControls = ({
           {videoEnabled ? 'CAMERA' : 'NO CAM'}
         </span>
       </button>
+
+      {showCameraSwitch && onSwitchCamera && (
+        <button
+          className="control-btn"
+          onClick={onSwitchCamera}
+          title="Switch Camera"
+        >
+          <SwitchCamera size={24} strokeWidth={2.5} />
+          <span className="control-label text-mono">FLIP</span>
+        </button>
+      )}
 
       <button
         className={`control-btn ${isScreenSharing ? 'active' : ''}`}

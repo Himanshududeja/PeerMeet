@@ -15,14 +15,21 @@ const ChatMessage = ({ message, isOwn }) => {
       return (
         <div className="message-file">
           {isImage ? (
-            <div className="message-image-container">
-              <img 
-                src={message.fileData} 
-                alt={message.fileName}
-                className="message-image"
-                onClick={() => window.open(message.fileData, '_blank')}
-              />
-            </div>
+            <>
+              <div className="message-image-container">
+                <img 
+                  src={message.fileData} 
+                  alt={message.fileName}
+                  className="message-image"
+                  onClick={() => window.open(message.fileData, '_blank')}
+                  onError={(e) => {
+                    console.error('Image load error:', e);
+                    e.target.style.display = 'none';
+                  }}
+                />
+              </div>
+              <div className="image-file-name">{message.fileName}</div>
+            </>
           ) : (
             <div className="message-file-info">
               <FileText size={24} />
@@ -70,11 +77,26 @@ const ChatPanel = ({ messages, onSendMessage, currentUserId }) => {
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Limit file size to 5MB
-      if (file.size > 5 * 1024 * 1024) {
-        alert('File size must be less than 5MB');
+      // Limit file size to 10MB (increased for images)
+      if (file.size > 10 * 1024 * 1024) {
+        alert('File size must be less than 10MB');
         return;
       }
+      
+      // Check file type
+      const allowedTypes = [
+        'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain'
+      ];
+      
+      if (!allowedTypes.includes(file.type)) {
+        alert('File type not supported. Please upload images, PDFs, or documents.');
+        return;
+      }
+      
       setSelectedFile(file);
     }
   };

@@ -203,7 +203,8 @@
 }
 
 .message-image-container {
-  max-width: 250px;
+  max-width: 300px;
+  width: 100%;
   border-radius: var(--radius-md);
   overflow: hidden;
   cursor: pointer;
@@ -213,12 +214,23 @@
 .message-image {
   width: 100%;
   height: auto;
+  max-height: 400px;
+  object-fit: contain;
   display: block;
   transition: transform var(--transition-base);
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .message-image:hover {
-  transform: scale(1.05);
+  transform: scale(1.02);
+}
+
+.image-file-name {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-xs);
+  font-style: italic;
 }
 
 .message-file-info {

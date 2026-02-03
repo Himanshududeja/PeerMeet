@@ -5,6 +5,7 @@ import { useMediaStream } from '../hooks/useMediaStream';
 import { useWebRTC } from '../hooks/useWebRTC';
 import { useChat } from '../hooks/useChat';
 import { useScreenShare } from '../hooks/useScreenShare';
+import { useCameraSwitch } from '../hooks/useCameraSwitch';
 import VideoGrid from '../components/Meeting/VideoGrid';
 import MediaControls from '../components/Controls/MediaControls';
 import ChatPanel from '../components/Chat/ChatPanel';
@@ -26,9 +27,18 @@ const Room = () => {
   const [copied, setCopied] = useState(false);
   const [participants, setParticipants] = useState([]);
   
-  const { stream, audioEnabled, videoEnabled, toggleAudio, toggleVideo } = useMediaStream();
+  const { 
+    stream, 
+    audioEnabled, 
+    videoEnabled, 
+    toggleAudio, 
+    toggleVideo,
+    setStream 
+  } = useMediaStream();
+  
   const { isSharing, screenStream, startScreenShare, stopScreenShare } = useScreenShare();
-  const { peers } = useWebRTC(roomId, socket, stream, screenStream); // Pass screenStream
+  const { switchCamera, facingMode, isSwitching } = useCameraSwitch(stream, setStream);
+  const { peers } = useWebRTC(roomId, socket, stream, screenStream);
   const { messages, sendMessage } = useChat(socket, roomId);
 
   useEffect(() => {
@@ -61,9 +71,18 @@ const Room = () => {
     } else {
       const screenStream = await startScreenShare();
       if (screenStream) {
-        // Notify other users about screen sharing
         socket.emit('screen-share-started', { roomId, userId: socket.id });
       }
+    }
+  };
+
+  const handleSwitchCamera = async () => {
+    if (isSwitching) return;
+    
+    const newStream = await switchCamera();
+    if (newStream) {
+      // Update peer connections with new video track
+      socket.emit('camera-switched', { roomId, userId: socket.id });
     }
   };
 
@@ -77,7 +96,10 @@ const Room = () => {
     navigate('/');
   };
 
-  const totalParticipants = Object.keys(peers || {}).length + 1; // +1 for local user
+  const totalParticipants = Object.keys(peers || {}).length + 1;
+
+  // Check if device supports camera switch (mobile)
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   return (
     <div className="room">
@@ -142,6 +164,7 @@ const Room = () => {
             peers={peers || {}}
             localUserName={userName}
             screenStream={screenStream}
+            isSharing={isSharing}
           />
         </div>
 
@@ -209,6 +232,8 @@ const Room = () => {
           onToggleVideo={toggleVideo}
           isScreenSharing={isSharing}
           onToggleScreenShare={handleToggleScreenShare}
+          onSwitchCamera={handleSwitchCamera}
+          showCameraSwitch={isMobile}
           onLeave={leaveRoom}
         />
       </div>
