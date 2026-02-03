@@ -8,12 +8,19 @@ const VideoTile = ({ stream, userName, isLocal, muted, isPinned, isScreenShare }
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
       
-      // Force play on mobile
-      videoRef.current.play().catch(err => {
-        console.error('Error playing video:', err);
-      });
+      // Force play and log status
+      videoRef.current.play()
+        .then(() => {
+          console.log(`✅ Video playing for ${userName}:`, {
+            isLocal,
+            tracks: stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState }))
+          });
+        })
+        .catch(err => {
+          console.error(`❌ Error playing video for ${userName}:`, err);
+        });
     }
-  }, [stream]);
+  }, [stream, userName, isLocal]);
 
   return (
     <div className={`video-tile ${isPinned ? 'pinned' : ''} ${isScreenShare ? 'screen-share' : ''}`}>
@@ -31,7 +38,7 @@ const VideoTile = ({ stream, userName, isLocal, muted, isPinned, isScreenShare }
       <div className="video-overlay">
         <span className="video-name text-mono">
           {isLocal ? `${userName} (You)` : userName}
-          {isScreenShare && ' - Screen Share'}
+          {isScreenShare && ' - Screen'}
         </span>
       </div>
       {isLocal && <div className="local-indicator">LOCAL</div>}
@@ -41,25 +48,29 @@ const VideoTile = ({ stream, userName, isLocal, muted, isPinned, isScreenShare }
 };
 
 const VideoGrid = ({ localStream, peers, localUserName, screenStream, isSharing }) => {
-  const peerCount = Object.keys(peers).length;
+  const peerCount = Object.keys(peers || {}).length;
   const totalVideos = peerCount + 1;
 
+  console.log('VideoGrid render:', {
+    totalVideos,
+    peerCount,
+    hasLocalStream: !!localStream,
+    hasScreenStream: !!screenStream,
+    isSharing,
+    peerIds: Object.keys(peers || {})
+  });
+
   // Check if anyone is sharing screen
-  const screenSharingPeer = Object.entries(peers).find(([_, peerData]) => {
-    // Check if this peer's stream has screen share characteristics
-    const videoTrack = peerData.stream?.getVideoTracks()[0];
+  const screenSharingPeer = Object.entries(peers || {}).find(([_, peerData]) => {
+    if (!peerData.stream) return false;
+    const videoTrack = peerData.stream.getVideoTracks()[0];
     return videoTrack?.label?.includes('screen') || videoTrack?.label?.includes('window');
   });
 
   const isAnyoneSharing = isSharing || screenSharingPeer;
 
   const getGridClass = () => {
-    // If someone is sharing screen, use pinned layout
-    if (isAnyoneSharing) {
-      return 'grid-pinned';
-    }
-
-    // Normal grid layouts
+    if (isAnyoneSharing) return 'grid-pinned';
     if (totalVideos === 1) return 'grid-1';
     if (totalVideos === 2) return 'grid-2';
     if (totalVideos === 3) return 'grid-3';
@@ -69,18 +80,15 @@ const VideoGrid = ({ localStream, peers, localUserName, screenStream, isSharing 
     return 'grid-many';
   };
 
-  // Show screen stream if local user is sharing, otherwise show camera
   const displayStream = screenStream || localStream;
 
   return (
     <div className={`video-grid ${getGridClass()}`}>
-      {/* Main/Pinned Video Area */}
       {isAnyoneSharing ? (
         <>
           {/* Pinned Screen Share */}
           <div className="main-video-area">
             {isSharing ? (
-              // Local screen share
               <VideoTile
                 stream={screenStream}
                 userName={localUserName}
@@ -90,7 +98,6 @@ const VideoGrid = ({ localStream, peers, localUserName, screenStream, isSharing 
                 isScreenShare={true}
               />
             ) : screenSharingPeer ? (
-              // Remote screen share
               <VideoTile
                 stream={screenSharingPeer[1].stream}
                 userName={screenSharingPeer[1].userName}
@@ -102,48 +109,36 @@ const VideoGrid = ({ localStream, peers, localUserName, screenStream, isSharing 
             ) : null}
           </div>
 
-          {/* Thumbnail Strip (Other Participants) */}
+          {/* Thumbnail Strip */}
           <div className="thumbnail-strip">
-            {/* Local camera (if not screen sharing) or local screen (if screen sharing) */}
             {!isSharing && localStream && (
               <VideoTile
                 stream={localStream}
                 userName={localUserName}
                 isLocal={true}
                 muted={true}
-                isPinned={false}
               />
             )}
 
-            {/* Remote participants */}
-            {Object.entries(peers).map(([peerId, peerData]) => {
-              // Skip the peer who is screen sharing (already shown as pinned)
-              if (screenSharingPeer && screenSharingPeer[0] === peerId) {
-                return null;
-              }
+            {Object.entries(peers || {}).map(([peerId, peerData]) => {
+              if (screenSharingPeer && screenSharingPeer[0] === peerId) return null;
+              if (!peerData.stream) return null;
 
-              const stream = peerData.stream;
-              const userName = peerData.userName || 'Anonymous';
-              
-              if (stream) {
-                return (
-                  <VideoTile
-                    key={peerId}
-                    stream={stream}
-                    userName={userName}
-                    isLocal={false}
-                    muted={false}
-                    isPinned={false}
-                  />
-                );
-              }
-              return null;
+              return (
+                <VideoTile
+                  key={peerId}
+                  stream={peerData.stream}
+                  userName={peerData.userName || 'Anonymous'}
+                  isLocal={false}
+                  muted={false}
+                />
+              );
             })}
           </div>
         </>
       ) : (
         <>
-          {/* Normal Grid Layout (No Screen Sharing) */}
+          {/* Normal Grid */}
           {displayStream && (
             <VideoTile
               stream={displayStream}
@@ -153,22 +148,21 @@ const VideoGrid = ({ localStream, peers, localUserName, screenStream, isSharing 
             />
           )}
 
-          {Object.entries(peers).map(([peerId, peerData]) => {
-            const stream = peerData.stream;
-            const userName = peerData.userName || 'Anonymous';
-            
-            if (stream) {
-              return (
-                <VideoTile
-                  key={peerId}
-                  stream={stream}
-                  userName={userName}
-                  isLocal={false}
-                  muted={false}
-                />
-              );
+          {Object.entries(peers || {}).map(([peerId, peerData]) => {
+            if (!peerData.stream) {
+              console.warn(`⚠️ No stream for peer ${peerId}`);
+              return null;
             }
-            return null;
+
+            return (
+              <VideoTile
+                key={peerId}
+                stream={peerData.stream}
+                userName={peerData.userName || 'Anonymous'}
+                isLocal={false}
+                muted={false}
+              />
+            );
           })}
         </>
       )}
