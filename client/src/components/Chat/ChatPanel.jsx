@@ -11,14 +11,14 @@ const ChatMessage = ({ message, isOwn }) => {
   const renderMessageContent = () => {
     if (message.type === 'file') {
       const isImage = message.fileType?.startsWith('image/');
-      
+
       return (
         <div className="message-file">
           {isImage ? (
             <>
               <div className="message-image-container">
-                <img 
-                  src={message.fileData} 
+                <img
+                  src={message.fileData}
                   alt={message.fileName}
                   className="message-image"
                   onClick={() => window.open(message.fileData, '_blank')}
@@ -36,8 +36,8 @@ const ChatMessage = ({ message, isOwn }) => {
               <span className="file-name">{message.fileName}</span>
             </div>
           )}
-          <a 
-            href={message.fileData} 
+          <a
+            href={message.fileData}
             download={message.fileName}
             className="file-download-btn"
           >
@@ -46,7 +46,7 @@ const ChatMessage = ({ message, isOwn }) => {
         </div>
       );
     }
-    
+
     return <p className="message-text">{message.text}</p>;
   };
 
@@ -77,12 +77,12 @@ const ChatPanel = ({ messages, onSendMessage, currentUserId }) => {
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Limit file size to 10MB (increased for images)
+      // Limit file size to 10MB (aligned with server limit)
       if (file.size > 10 * 1024 * 1024) {
         alert('File size must be less than 10MB');
         return;
       }
-      
+
       // Check file type
       const allowedTypes = [
         'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
@@ -91,19 +91,19 @@ const ChatPanel = ({ messages, onSendMessage, currentUserId }) => {
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'text/plain'
       ];
-      
+
       if (!allowedTypes.includes(file.type)) {
         alert('File type not supported. Please upload images, PDFs, or documents.');
         return;
       }
-      
+
       setSelectedFile(file);
     }
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
+
     if (selectedFile) {
       // Send file
       const reader = new FileReader();
@@ -183,7 +183,7 @@ const ChatPanel = ({ messages, onSendMessage, currentUserId }) => {
           style={{ display: 'none' }}
           accept="image/*,.pdf,.doc,.docx,.txt"
         />
-        
+
         <button
           type="button"
           className="attach-btn"
@@ -201,7 +201,7 @@ const ChatPanel = ({ messages, onSendMessage, currentUserId }) => {
           onChange={(e) => setInputValue(e.target.value)}
           disabled={!!selectedFile}
         />
-        
+
         <button
           type="submit"
           className="send-btn"
