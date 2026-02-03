@@ -24,7 +24,9 @@ const io = new Server(httpServer, {
         methods: ['GET', 'POST']
     },
     transports: ['websocket', 'polling'],
-    maxHttpBufferSize: 100e6 // 100MB
+    maxHttpBufferSize: 100e6, // 100MB
+    pingTimeout: 120000,      // 120 seconds
+    pingInterval: 30000       // 30 seconds
 });
 
 // Store room information
