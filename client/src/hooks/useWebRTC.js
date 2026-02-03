@@ -6,6 +6,9 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, userName = 
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
 
+  // Keep track of signaling state to prevent glare errors
+  const makingOfferRef = useRef({}); // userId -> boolean
+
   // Keep refs updated to avoid stale closures in socket listeners
   useEffect(() => {
     localStreamRef.current = localStream;
@@ -26,21 +29,20 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, userName = 
       return peersRef.current[userId].peer;
     }
 
-    console.log(`🔌 Creating RTCPeerConnection for ${userId} (${remoteUserName})`);
+    console.log(`🔌 Initializing PeerConnection for ${userId} (${remoteUserName})`);
 
-    const config = {
+    const isPolite = socket.id > userId; // Smaller ID is "impolite" (imposes its offer)
+
+    const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' }
       ]
-    };
-
-    const pc = new RTCPeerConnection(config);
+    });
 
     // Track handling
     pc.ontrack = (event) => {
-      console.log(`📥 Received track from ${userId}:`, event.track.kind);
+      console.log(`📥 Track received from ${userId}:`, event.track.kind);
       if (event.streams && event.streams[0]) {
         peersRef.current[userId] = {
           ...peersRef.current[userId],
@@ -52,15 +54,31 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, userName = 
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        socket.emit('ice-candidate', {
-          to: userId,
-          candidate: event.candidate
+        socket.emit('ice-candidate', { to: userId, candidate: event.candidate });
+      }
+    };
+
+    // Perfect Negotiation: Handle onnegotiationneeded for BOTH sides
+    pc.onnegotiationneeded = async () => {
+      try {
+        console.log(`🔄 Negotiation needed for ${userId}`);
+        makingOfferRef.current[userId] = true;
+        await pc.setLocalDescription(); // Implicitly creates offer
+        socket.emit('offer', {
+          userToSignal: userId,
+          callerId: socket.id,
+          signal: pc.localDescription,
+          userName: userName
         });
+      } catch (err) {
+        console.error(`❌ Negotiation failed for ${userId}:`, err);
+      } finally {
+        makingOfferRef.current[userId] = false;
       }
     };
 
     pc.onconnectionstatechange = () => {
-      console.log(`🔗 Connection state with ${userId}:`, pc.connectionState);
+      console.log(`🔗 Connection status [${userId}]:`, pc.connectionState);
       if (pc.connectionState === 'failed') pc.restartIce();
     };
 
@@ -69,34 +87,15 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, userName = 
       peer: pc,
       userName: remoteUserName,
       stream: null,
-      iceCandidatesQueue: [] // Queue candidates if remote desc not set
+      iceCandidatesQueue: [],
+      isPolite
     };
     updatePeers();
 
-    // ID-based arbitration: smaller ID initiates
-    pc.onnegotiationneeded = () => {
-      if (socket.id < userId) {
-        console.log(`🔄 Negotiation needed for ${userId} (Acting as Initiator)`);
-        pc.createOffer()
-          .then(offer => pc.setLocalDescription(offer))
-          .then(() => {
-            socket.emit('offer', {
-              userToSignal: userId,
-              callerId: socket.id,
-              signal: pc.localDescription
-            });
-          })
-          .catch(err => console.error('Negotiation error:', err));
-      }
-    };
-
-    // Initial track addition using REFS to ensure we have the live stream
-    const activeStream = screenStreamRef.current || localStreamRef.current;
-    if (activeStream) {
-      console.log(`📤 Adding tracks to peer ${userId} from Ref`);
-      activeStream.getTracks().forEach(track => pc.addTrack(track, activeStream));
-    } else {
-      console.warn(`⚠️ No stream in Ref yet for peer ${userId}`);
+    // Add current streams if available
+    const currentStream = screenStreamRef.current || localStreamRef.current;
+    if (currentStream) {
+      currentStream.getTracks().forEach(track => pc.addTrack(track, currentStream));
     }
 
     return pc;
@@ -106,7 +105,6 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, userName = 
     if (!socket || !roomId) return;
 
     socket.on('existing-users', ({ users }) => {
-      console.log('👥 Existing users:', users);
       users.forEach(user => {
         const userId = typeof user === 'string' ? user : user.id;
         const remoteName = typeof user === 'string' ? 'Anonymous' : user.userName;
@@ -115,56 +113,57 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, userName = 
     });
 
     socket.on('user-joined', ({ userId, userName: remoteName }) => {
-      console.log(`👋 User joined: ${userId}`);
       createPeerConnection(userId, remoteName);
     });
 
     socket.on('offer', async ({ from, offer, userName: remoteName }) => {
-      console.log(`📨 Received offer from: ${from}`);
       const pc = createPeerConnection(from, remoteName);
+      const peerData = peersRef.current[from];
 
       try {
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const offerCollision = makingOfferRef.current[from] || pc.signalingState !== 'stable';
+        const ignoreOffer = !peerData.isPolite && offerCollision;
 
-        // Process queued ICE candidates
-        const peerData = peersRef.current[from];
-        if (peerData?.iceCandidatesQueue) {
-          while (peerData.iceCandidatesQueue.length > 0) {
-            const cand = peerData.iceCandidatesQueue.shift();
-            await pc.addIceCandidate(cand);
-          }
+        if (ignoreOffer) {
+          console.warn(`🛑 Ignoring offer from ${from} due to glare (Impolite peer)`);
+          return;
         }
 
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socket.emit('answer', { callerId: from, signal: answer });
+        console.log(`📨 Processing offer from ${from}`);
+        await pc.setRemoteDescription(offer);
+
+        // Process queued ICE candidates
+        while (peerData.iceCandidatesQueue.length > 0) {
+          await pc.addIceCandidate(peerData.iceCandidatesQueue.shift());
+        }
+
+        await pc.setLocalDescription(); // Implicitly creates answer
+        socket.emit('answer', { callerId: from, signal: pc.localDescription });
       } catch (err) {
-        console.error('❌ Offer error:', err);
+        console.error(`❌ Offer processing failed:`, err);
       }
     });
 
     socket.on('answer', async ({ from, answer }) => {
       const pc = peersRef.current[from]?.peer;
-      if (pc && pc.signalingState !== 'stable') {
-        console.log(`📨 Received answer from: ${from}`);
-        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      if (pc) {
+        console.log(`📨 Answer received from ${from}`);
+        await pc.setRemoteDescription(answer);
       }
     });
 
     socket.on('ice-candidate', async ({ from, candidate }) => {
       const peerData = peersRef.current[from];
       if (!peerData) return;
-      const pc = peerData.peer;
 
-      if (pc.remoteDescription && pc.remoteDescription.type) {
+      if (peerData.peer.remoteDescription) {
         try {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          await peerData.peer.addIceCandidate(candidate);
         } catch (e) {
-          console.warn('ICE candidate failed:', e);
+          console.warn('ICE failed:', e);
         }
       } else {
-        // Queue candidates if remote desc not yet set
-        peerData.iceCandidatesQueue.push(new RTCIceCandidate(candidate));
+        peerData.iceCandidatesQueue.push(candidate);
       }
     });
 
@@ -172,6 +171,7 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, userName = 
       if (peersRef.current[userId]) {
         peersRef.current[userId].peer.close();
         delete peersRef.current[userId];
+        delete makingOfferRef.current[userId];
         updatePeers();
       }
     });
@@ -190,7 +190,7 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, userName = 
     };
   }, [socket, roomId, userName]);
 
-  // Handle stream updates (reactive track replacement)
+  // Track synchronization (Reactive)
   useEffect(() => {
     if (!localStream) return;
     Object.values(peersRef.current).forEach(peerData => {
@@ -199,30 +199,27 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, userName = 
       localStream.getTracks().forEach(track => {
         const sender = senders.find(s => s.track?.kind === track.kind);
         if (sender) {
-          sender.replaceTrack(track);
+          if (sender.track !== track) sender.replaceTrack(track);
         } else {
-          // If we didn't have tracks before, add them now
           pc.addTrack(track, localStream);
         }
       });
     });
   }, [localStream]);
 
-  // Handle screen share
   useEffect(() => {
     if (!screenStream) return;
     const screenTrack = screenStream.getVideoTracks()[0];
     Object.values(peersRef.current).forEach(peerData => {
-      const sender = peerData.peer.getSenders().find(s => s.track?.kind === 'video');
-      if (sender) sender.replaceTrack(screenTrack);
+      const videoSender = peerData.peer.getSenders().find(s => s.track?.kind === 'video');
+      if (videoSender) videoSender.replaceTrack(screenTrack);
     });
-
     screenTrack.onended = () => {
       if (localStreamRef.current) {
         const camTrack = localStreamRef.current.getVideoTracks()[0];
         Object.values(peersRef.current).forEach(peerData => {
-          const sender = peerData.peer.getSenders().find(s => s.track?.kind === 'video');
-          if (sender) sender.replaceTrack(camTrack);
+          const videoSender = peerData.peer.getSenders().find(s => s.track?.kind === 'video');
+          if (videoSender) videoSender.replaceTrack(camTrack);
         });
       }
     };
