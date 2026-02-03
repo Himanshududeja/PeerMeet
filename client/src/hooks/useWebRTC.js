@@ -1,13 +1,80 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export const useWebRTC = (roomId, socket, localStream, screenStream) => {
   const [peers, setPeers] = useState({});
   const peersRef = useRef({});
 
-  // Function to get current stream to send (screen or camera)
-  const getCurrentStream = useCallback(() => {
-    return screenStream || localStream;
-  }, [screenStream, localStream]);
+  // Define createPeerConnection BEFORE useEffect
+  const createPeerConnection = (userId, isInitiator, userName = 'Anonymous') => {
+    const config = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
+      ]
+    };
+
+    const pc = new RTCPeerConnection(config);
+
+    // IMPORTANT: Always use localStream initially (not screenStream)
+    if (localStream) {
+      localStream.getTracks().forEach(track => {
+        console.log(`Adding ${track.kind} track to peer ${userId}`);
+        pc.addTrack(track, localStream);
+      });
+    }
+
+    pc.ontrack = (event) => {
+      console.log(`📥 Received ${event.track.kind} track from:`, userId);
+      if (event.streams && event.streams[0]) {
+        peersRef.current[userId] = {
+          peer: pc,
+          userName,
+          stream: event.streams[0]
+        };
+        setPeers({ ...peersRef.current });
+      }
+    };
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit('ice-candidate', {
+          to: userId,
+          candidate: event.candidate
+        });
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log(`Connection state for ${userId}:`, pc.connectionState);
+      if (pc.connectionState === 'connected') {
+        console.log('✅ Connected to:', userId);
+      }
+    };
+
+    peersRef.current[userId] = {
+      peer: pc,
+      userName
+    };
+    setPeers({ ...peersRef.current });
+
+    if (isInitiator) {
+      pc.createOffer()
+        .then(offer => pc.setLocalDescription(offer))
+        .then(() => {
+          socket.emit('offer', {
+            userToSignal: userId,
+            callerId: socket.id,
+            signal: pc.localDescription
+          });
+        })
+        .catch(err => console.error('Error creating offer:', err));
+    }
+
+    return pc;
+  };
 
   useEffect(() => {
     if (!socket || !localStream) return;
@@ -82,7 +149,7 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
       socket.off('ice-candidate');
       socket.off('user-left');
     };
-  }, [socket, localStream, roomId, createPeerConnection]);
+  }, [socket, localStream, roomId]);
 
   // Handle screen share - replace video track in all peer connections
   useEffect(() => {
@@ -124,84 +191,6 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
       }
     };
   }, [screenStream, localStream]);
-
-  const createPeerConnection = useCallback((userId, isInitiator, userName = 'Anonymous') => {
-    const config = {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' }
-      ]
-    };
-
-    const pc = new RTCPeerConnection(config);
-
-    // IMPORTANT: Always use localStream initially (not screenStream)
-    // We'll replace the video track later if screen sharing
-    if (localStream) {
-      localStream.getTracks().forEach(track => {
-        console.log(`Adding ${track.kind} track to peer ${userId}`);
-        pc.addTrack(track, localStream);
-      });
-    }
-
-    pc.ontrack = (event) => {
-      console.log(`📥 Received ${event.track.kind} track from:`, userId);
-      if (event.streams && event.streams[0]) {
-        peersRef.current[userId] = {
-          peer: pc,
-          userName,
-          stream: event.streams[0]
-        };
-        setPeers({ ...peersRef.current });
-      }
-    };
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit('ice-candidate', {
-          to: userId,
-          candidate: event.candidate
-        });
-      }
-    };
-
-    pc.onconnectionstatechange = () => {
-      console.log(`Connection state for ${userId}:`, pc.connectionState);
-      if (pc.connectionState === 'connected') {
-        console.log('✅ Connected to:', userId);
-      } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-        console.log('❌ Connection issue with:', userId);
-      }
-    };
-
-    pc.oniceconnectionstatechange = () => {
-      console.log(`ICE connection state for ${userId}:`, pc.iceConnectionState);
-    };
-
-    peersRef.current[userId] = {
-      peer: pc,
-      userName
-    };
-    setPeers({ ...peersRef.current });
-
-    if (isInitiator) {
-      pc.createOffer()
-        .then(offer => pc.setLocalDescription(offer))
-        .then(() => {
-          socket.emit('offer', {
-            userToSignal: userId,
-            callerId: socket.id,
-            signal: pc.localDescription
-          });
-        })
-        .catch(err => console.error('Error creating offer:', err));
-    }
-
-    return pc;
-  }, [socket, localStream]);
 
   return { peers };
 };
