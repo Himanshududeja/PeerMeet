@@ -116,7 +116,11 @@ io.on('connection', (socket) => {
 
     // Chat message
     socket.on('send-message', ({ roomId, message }) => {
-        console.log(`💬 Message in room ${roomId}:`, message.text);
+        if (message.type === 'text') {
+            console.log(`💬 Message in room ${roomId}:`, message.text);
+        } else {
+            console.log(`📎 File shared in room ${roomId}: ${message.fileName} (${message.fileType})`);
+        }
         io.to(roomId).emit('chat-message', message);
     });
 
