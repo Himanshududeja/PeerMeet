@@ -7,6 +7,11 @@ const VideoTile = ({ stream, userName, isLocal, muted }) => {
   useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
+      
+      // Force play on mobile
+      videoRef.current.play().catch(err => {
+        console.error('Error playing video:', err);
+      });
     }
   }, [stream]);
 
@@ -18,6 +23,10 @@ const VideoTile = ({ stream, userName, isLocal, muted }) => {
         playsInline
         muted={muted}
         className="video-element"
+        webkit-playsinline="true"
+        x5-playsinline="true"
+        x5-video-player-type="h5"
+        x5-video-player-fullscreen="false"
       />
       <div className="video-overlay">
         <span className="video-name text-mono">

@@ -81,6 +81,25 @@
   height: 100%;
   object-fit: cover;
   display: block;
+  background: #000;
+}
+
+/* Mobile video fixes */
+.video-element::-webkit-media-controls {
+  display: none !important;
+}
+
+.video-element::-webkit-media-controls-start-playback-button {
+  display: none !important;
+}
+
+/* Force video to fill container on mobile */
+@supports (-webkit-touch-callout: none) {
+  .video-element {
+    object-fit: cover;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+  }
 }
 
 /* Video Overlay */
