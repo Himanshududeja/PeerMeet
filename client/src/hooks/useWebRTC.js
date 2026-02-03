@@ -107,7 +107,11 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, userName = 
 
     socket.on('existing-users', ({ users }) => {
       console.log('👥 Existing users:', users);
-      users.forEach(uid => createPeerConnection(uid));
+      users.forEach(user => {
+        const userId = typeof user === 'string' ? user : user.id;
+        const remoteName = typeof user === 'string' ? 'Anonymous' : user.userName;
+        createPeerConnection(userId, remoteName);
+      });
     });
 
     socket.on('user-joined', ({ userId, userName: remoteName }) => {
