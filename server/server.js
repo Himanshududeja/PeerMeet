@@ -24,7 +24,7 @@ const io = new Server(httpServer, {
         methods: ['GET', 'POST']
     },
     transports: ['websocket', 'polling'],
-    maxHttpBufferSize: 15e6 // 15MB
+    maxHttpBufferSize: 100e6 // 100MB
 });
 
 // Store room information
