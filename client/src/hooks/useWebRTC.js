@@ -176,6 +176,11 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, userName = 
       }
     });
 
+    socket.on('connect', () => {
+      console.log('🔄 Socket reconnected, re-joining room...');
+      socket.emit('join-room', { roomId, userName });
+    });
+
     socket.emit('join-room', { roomId, userName });
 
     return () => {
