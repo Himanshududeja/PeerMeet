@@ -94,6 +94,7 @@ export const useMediaStream = () => {
     videoEnabled,
     loading,
     toggleAudio,
-    toggleVideo
+    toggleVideo,
+    setStream
   };
 };
