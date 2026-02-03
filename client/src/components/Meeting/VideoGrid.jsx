@@ -29,9 +29,9 @@ const VideoTile = ({ stream, userName, isLocal, muted }) => {
   );
 };
 
-const VideoGrid = ({ localStream, peers, localUserName }) => {
+const VideoGrid = ({ localStream, peers, localUserName, screenStream }) => {
   const peerCount = Object.keys(peers).length;
-  const totalVideos = peerCount + 1; // +1 for local stream
+  const totalVideos = peerCount + 1;
 
   const getGridClass = () => {
     if (totalVideos === 1) return 'grid-1';
@@ -43,12 +43,15 @@ const VideoGrid = ({ localStream, peers, localUserName }) => {
     return 'grid-many';
   };
 
+  // Show screen stream if sharing, otherwise show camera
+  const displayStream = screenStream || localStream;
+
   return (
     <div className={`video-grid ${getGridClass()}`}>
       {/* Local Video */}
-      {localStream && (
+      {displayStream && (
         <VideoTile
-          stream={localStream}
+          stream={displayStream}
           userName={localUserName}
           isLocal={true}
           muted={true}
@@ -57,7 +60,6 @@ const VideoGrid = ({ localStream, peers, localUserName }) => {
 
       {/* Remote Videos */}
       {Object.entries(peers).map(([peerId, peerData]) => {
-        // Get stream from peerData, not from peer.streams
         const stream = peerData.stream;
         const userName = peerData.userName || 'Anonymous';
         

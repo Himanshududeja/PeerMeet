@@ -1,86 +1,52 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
-export const useWebRTC = (roomId, socket, localStream, screenStream, localUserName = 'Anonymous') => {
+export const useWebRTC = (roomId, socket, localStream, screenStream) => {
   const [peers, setPeers] = useState({});
   const peersRef = useRef({});
-  const pendingCandidates = useRef({}); // Buffer for ICE candidates arriving before RemoteDescription
+
+  // Function to get current stream to send (screen or camera)
+  const getCurrentStream = useCallback(() => {
+    return screenStream || localStream;
+  }, [screenStream, localStream]);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !localStream) return;
 
     socket.on('existing-users', ({ users }) => {
-      console.log('📡 Found existing users:', users.length);
-      users.forEach(user => {
-        const userId = user.id || user;
-        const userName = user.userName || 'Anonymous';
-        console.log('📡 Initiating connection to existing user:', userId, userName);
-        createPeerConnection(userId, true, userName);
+      users.forEach(userId => {
+        createPeerConnection(userId, true);
       });
     });
 
     socket.on('user-joined', ({ userId, userName }) => {
-      console.log('👤 User joined room:', userId, userName);
-      // Wait for their offer (we are the existing user)
-      createPeerConnection(userId, false, userName);
+      console.log('User joined:', userId, userName);
+      createPeerConnection(userId, true, userName);
     });
 
     socket.on('offer', async ({ from, offer, userName }) => {
-      console.log('📩 Received offer from:', from, userName);
+      console.log('Received offer from:', from);
       const pc = createPeerConnection(from, false, userName);
-
+      
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        console.log('✅ Remote description (Offer) set for:', from);
-
-        // Process buffered candidates
-        if (pendingCandidates.current[from]) {
-          console.log(`❄️ Applying ${pendingCandidates.current[from].length} buffered candidates for:`, from);
-          pendingCandidates.current[from].forEach(async (candidate) => {
-            try {
-              await pc.addIceCandidate(new RTCIceCandidate(candidate));
-            } catch (e) {
-              console.error('❌ Error adding buffered candidate:', e);
-            }
-          });
-          delete pendingCandidates.current[from];
-        }
-
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        console.log('📤 Sending answer to:', from);
-        socket.emit('answer', {
-          callerId: from,
-          signal: answer,
-          userName: localUserName
-        });
+        socket.emit('answer', { callerId: from, signal: answer });
       } catch (err) {
-        console.error('❌ Error handling offer:', err);
+        console.error('Error handling offer:', err);
       }
     });
 
     socket.on('answer', async ({ from, answer }) => {
-      console.log('📩 Received answer from:', from);
+      console.log('Received answer from:', from);
       const pc = peersRef.current[from]?.peer;
-
+      
       if (pc && pc.signalingState !== 'stable') {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(answer));
-          console.log('✅ Remote description (Answer) set for:', from);
-
-          // Process buffered candidates
-          if (pendingCandidates.current[from]) {
-            console.log(`❄️ Applying ${pendingCandidates.current[from].length} buffered candidates for:`, from);
-            pendingCandidates.current[from].forEach(async (candidate) => {
-              try {
-                await pc.addIceCandidate(new RTCIceCandidate(candidate));
-              } catch (e) {
-                console.error('❌ Error adding buffered candidate:', e);
-              }
-            });
-            delete pendingCandidates.current[from];
-          }
+          console.log('Answer set successfully');
         } catch (err) {
-          console.error('❌ Error setting remote description:', err);
+          console.error('Error setting remote description:', err);
         }
       }
     });
@@ -88,38 +54,24 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, localUserNa
     socket.on('ice-candidate', async ({ from, candidate }) => {
       const pc = peersRef.current[from]?.peer;
       if (pc && candidate) {
-        if (pc.remoteDescription) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
-            // console.log('❄️ Successfully added ICE candidate from:', from);
-          } catch (err) {
-            console.error('❌ Error adding ICE candidate:', err);
-          }
-        } else {
-          // Buffer candidate if remote description not set yet
-          // console.log('⏳ Buffering ICE candidate from:', from);
-          if (!pendingCandidates.current[from]) {
-            pendingCandidates.current[from] = [];
-          }
-          pendingCandidates.current[from].push(candidate);
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (err) {
+          console.error('Error adding ICE candidate:', err);
         }
       }
     });
 
     socket.on('user-left', ({ userId }) => {
-      console.log('👋 User left:', userId);
+      console.log('User left:', userId);
       if (peersRef.current[userId]) {
         peersRef.current[userId].peer.close();
         delete peersRef.current[userId];
-        if (pendingCandidates.current[userId]) {
-          delete pendingCandidates.current[userId];
-        }
         setPeers({ ...peersRef.current });
       }
     });
 
     return () => {
-      console.log('🧹 Cleaning up WebRTC listeners');
       Object.values(peersRef.current).forEach(({ peer }) => {
         if (peer) peer.close();
       });
@@ -130,89 +82,50 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, localUserNa
       socket.off('ice-candidate');
       socket.off('user-left');
     };
-  }, [socket, roomId, localUserName]);
-
-  // Effect to add tracks when localStream arrives or changes
-  useEffect(() => {
-    if (!localStream) return;
-
-    console.log('🎥 Local stream tracks updating...');
-    Object.values(peersRef.current).forEach(({ peer }) => {
-      const currentSenders = peer.getSenders();
-      localStream.getTracks().forEach(track => {
-        const sender = currentSenders.find(s => s.track && s.track.kind === track.kind);
-        if (sender) {
-          sender.replaceTrack(track).catch(err => console.error('Error replacing track:', err));
-        } else {
-          peer.addTrack(track, localStream);
-        }
-      });
-    });
-  }, [localStream]);
+  }, [socket, localStream, roomId, createPeerConnection]);
 
   // Handle screen share - replace video track in all peer connections
   useEffect(() => {
-    if (Object.keys(peersRef.current).length === 0) return;
+    if (!screenStream || Object.keys(peersRef.current).length === 0) return;
 
-    if (screenStream) {
-      const screenVideoTrack = screenStream.getVideoTracks()[0];
+    console.log('📺 Starting screen share for all peers');
+    const screenVideoTrack = screenStream.getVideoTracks()[0];
+    
+    Object.entries(peersRef.current).forEach(([userId, { peer }]) => {
+      const senders = peer.getSenders();
+      const videoSender = senders.find(sender => 
+        sender.track && sender.track.kind === 'video'
+      );
 
-      Object.values(peersRef.current).forEach(({ peer }) => {
-        const senders = peer.getSenders();
-        const videoSender = senders.find(sender =>
-          sender.track && sender.track.kind === 'video'
-        );
+      if (videoSender && screenVideoTrack) {
+        videoSender.replaceTrack(screenVideoTrack)
+          .then(() => console.log(`✅ Screen track sent to peer: ${userId}`))
+          .catch(err => console.error(`❌ Error sending screen to ${userId}:`, err));
+      }
+    });
 
-        if (videoSender && screenVideoTrack) {
-          videoSender.replaceTrack(screenVideoTrack)
-            .then(() => console.log('Screen track replaced'))
-            .catch(err => console.error('Error replacing track:', err));
-        }
-      });
+    // When screen sharing stops, switch back to camera
+    screenVideoTrack.onended = () => {
+      console.log('📹 Screen share ended, switching back to camera');
+      if (localStream) {
+        const cameraVideoTrack = localStream.getVideoTracks()[0];
+        Object.entries(peersRef.current).forEach(([userId, { peer }]) => {
+          const senders = peer.getSenders();
+          const videoSender = senders.find(sender => 
+            sender.track && sender.track.kind === 'video'
+          );
 
-      screenVideoTrack.onended = () => {
-        if (localStream) {
-          const cameraVideoTrack = localStream.getVideoTracks()[0];
-          Object.values(peersRef.current).forEach(({ peer }) => {
-            const senders = peer.getSenders();
-            const videoSender = senders.find(sender =>
-              sender.track && sender.track.kind === 'video'
-            );
-
-            if (videoSender && cameraVideoTrack) {
-              videoSender.replaceTrack(cameraVideoTrack)
-                .then(() => console.log('Camera track restored'))
-                .catch(err => console.error('Error restoring track:', err));
-            }
-          });
-        }
-      };
-    } else if (localStream) {
-      const cameraVideoTrack = localStream.getVideoTracks()[0];
-      Object.values(peersRef.current).forEach(({ peer }) => {
-        const senders = peer.getSenders();
-        const videoSender = senders.find(sender =>
-          sender.track && sender.track.kind === 'video'
-        );
-
-        if (videoSender && cameraVideoTrack && videoSender.track !== cameraVideoTrack) {
-          videoSender.replaceTrack(cameraVideoTrack)
-            .catch(err => console.error('Error restoring camera track:', err));
-        }
-      });
-    }
+          if (videoSender && cameraVideoTrack) {
+            videoSender.replaceTrack(cameraVideoTrack)
+              .then(() => console.log(`✅ Camera restored for peer: ${userId}`))
+              .catch(err => console.error(`❌ Error restoring camera for ${userId}:`, err));
+          }
+        });
+      }
+    };
   }, [screenStream, localStream]);
 
-  const createPeerConnection = (userId, isInitiator, userName = 'Anonymous') => {
-    if (peersRef.current[userId] &&
-      peersRef.current[userId].peer.connectionState !== 'closed' &&
-      peersRef.current[userId].peer.connectionState !== 'failed') {
-      console.log('Using existing peer connection for:', userId);
-      return peersRef.current[userId].peer;
-    }
-
-    console.log('Creating new peer connection for:', userId, 'as initiator:', isInitiator);
-
+  const createPeerConnection = useCallback((userId, isInitiator, userName = 'Anonymous') => {
     const config = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -220,47 +133,30 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, localUserNa
         { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun3.l.google.com:19302' },
         { urls: 'stun:stun4.l.google.com:19302' }
-      ],
-      iceCandidatePoolSize: 10
+      ]
     };
 
     const pc = new RTCPeerConnection(config);
 
+    // IMPORTANT: Always use localStream initially (not screenStream)
+    // We'll replace the video track later if screen sharing
     if (localStream) {
       localStream.getTracks().forEach(track => {
+        console.log(`Adding ${track.kind} track to peer ${userId}`);
         pc.addTrack(track, localStream);
       });
     }
 
-    if (screenStream) {
-      const screenVideoTrack = screenStream.getVideoTracks()[0];
-      const senders = pc.getSenders();
-      const videoSender = senders.find(sender =>
-        sender.track && sender.track.kind === 'video'
-      );
-
-      if (videoSender && screenVideoTrack) {
-        videoSender.replaceTrack(screenVideoTrack)
-          .then(() => console.log('Screen track applied to new peer:', userId))
-          .catch(err => console.error('Error replacing track for new peer:', err));
-      }
-    }
-
     pc.ontrack = (event) => {
-      console.log('📡 Received remote track:', event.track.kind, 'from:', userId);
-
-      // If browsers add multiple tracks, ensure we get the stream
-      const remoteStream = event.streams[0] || new MediaStream([event.track]);
-
-      const currentName = peersRef.current[userId]?.userName || userName;
-      peersRef.current[userId] = {
-        ...peersRef.current[userId],
-        peer: pc,
-        userName: currentName,
-        stream: remoteStream
-      };
-      setPeers({ ...peersRef.current });
-      console.log('📺 Stream state updated for:', userId);
+      console.log(`📥 Received ${event.track.kind} track from:`, userId);
+      if (event.streams && event.streams[0]) {
+        peersRef.current[userId] = {
+          peer: pc,
+          userName,
+          stream: event.streams[0]
+        };
+        setPeers({ ...peersRef.current });
+      }
     };
 
     pc.onicecandidate = (event) => {
@@ -272,23 +168,22 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, localUserNa
       }
     };
 
-    pc.oniceconnectionstatechange = () => {
-      console.log(`🧊 ICE Connection state with ${userId}:`, pc.iceConnectionState);
-      if (pc.iceConnectionState === 'connected') {
-        console.log('✅ Peer network connection established with:', userId);
+    pc.onconnectionstatechange = () => {
+      console.log(`Connection state for ${userId}:`, pc.connectionState);
+      if (pc.connectionState === 'connected') {
+        console.log('✅ Connected to:', userId);
+      } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+        console.log('❌ Connection issue with:', userId);
       }
     };
 
-    pc.onconnectionstatechange = () => {
-      console.log(`📡 Peer connection state with ${userId}:`, pc.connectionState);
-      if (pc.connectionState === 'connected') {
-        console.log('✅ Fully connected to:', userId);
-      }
+    pc.oniceconnectionstatechange = () => {
+      console.log(`ICE connection state for ${userId}:`, pc.iceConnectionState);
     };
 
     peersRef.current[userId] = {
       peer: pc,
-      userName: peersRef.current[userId]?.userName || userName
+      userName
     };
     setPeers({ ...peersRef.current });
 
@@ -296,19 +191,17 @@ export const useWebRTC = (roomId, socket, localStream, screenStream, localUserNa
       pc.createOffer()
         .then(offer => pc.setLocalDescription(offer))
         .then(() => {
-          console.log('📤 Sending offer to:', userId);
           socket.emit('offer', {
             userToSignal: userId,
             callerId: socket.id,
-            signal: pc.localDescription,
-            userName: localUserName
+            signal: pc.localDescription
           });
         })
-        .catch(err => console.error('❌ Error creating offer:', err));
+        .catch(err => console.error('Error creating offer:', err));
     }
 
     return pc;
-  };
+  }, [socket, localStream]);
 
   return { peers };
 };
