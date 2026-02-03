@@ -65,13 +65,13 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
           userName: existingPeerData?.userName || userName,
           stream: event.streams[0]
         };
-        
+
         console.log(`✅ Stream stored for ${userId}:`, {
           audioTracks: event.streams[0].getAudioTracks().length,
           videoTracks: event.streams[0].getVideoTracks().length,
           hasStream: !!peersRef.current[userId].stream
         });
-        
+
         // Force update
         setPeers({ ...peersRef.current });
       } else {
@@ -92,7 +92,7 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
     // Connection state monitoring
     pc.onconnectionstatechange = () => {
       console.log(`🔗 Connection state for ${userId}:`, pc.connectionState);
-      
+
       if (pc.connectionState === 'connected') {
         console.log(`✅ Connected to: ${userId} (${userName})`);
       } else if (pc.connectionState === 'failed') {
@@ -156,14 +156,14 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
     // Handle new user joined
     socket.on('user-joined', ({ userId, userName }) => {
       console.log(`👋 User joined: ${userId} (${userName})`);
-      createPeerConnection(userId, true, userName);
+      createPeerConnection(userId, false, userName);
     });
 
     // Handle offer
     socket.on('offer', async ({ from, offer, userName }) => {
       console.log(`📨 Received offer from: ${from} (${userName})`);
       const pc = createPeerConnection(from, false, userName);
-      
+
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await pc.createAnswer({
@@ -171,11 +171,11 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
           offerToReceiveVideo: true
         });
         await pc.setLocalDescription(answer);
-        
+
         console.log(`📤 Sending answer to ${from}`);
-        socket.emit('answer', { 
-          callerId: from, 
-          signal: answer 
+        socket.emit('answer', {
+          callerId: from,
+          signal: answer
         });
       } catch (err) {
         console.error(`❌ Error handling offer from ${from}:`, err);
@@ -186,14 +186,14 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
     socket.on('answer', async ({ from, answer }) => {
       console.log(`📨 Received answer from: ${from}`);
       const peerData = peersRef.current[from];
-      
+
       if (!peerData || !peerData.peer) {
         console.error(`❌ No peer found for ${from}`);
         return;
       }
 
       const pc = peerData.peer;
-      
+
       if (pc.signalingState !== 'stable') {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(answer));
@@ -209,7 +209,7 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
     // Handle ICE candidate
     socket.on('ice-candidate', async ({ from, candidate }) => {
       const peerData = peersRef.current[from];
-      
+
       if (peerData && peerData.peer && candidate) {
         try {
           await peerData.peer.addIceCandidate(new RTCIceCandidate(candidate));
@@ -224,7 +224,7 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
     socket.on('user-left', ({ userId }) => {
       console.log(`👋 User left: ${userId}`);
       const peerData = peersRef.current[userId];
-      
+
       if (peerData && peerData.peer) {
         peerData.peer.close();
         delete peersRef.current[userId];
@@ -254,7 +254,7 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
 
     console.log('📺 Starting screen share for all peers');
     const screenVideoTrack = screenStream.getVideoTracks()[0];
-    
+
     if (!screenVideoTrack) {
       console.error('❌ No screen video track found');
       return;
@@ -264,7 +264,7 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
       if (!peerData.peer) return;
 
       const senders = peerData.peer.getSenders();
-      const videoSender = senders.find(sender => 
+      const videoSender = senders.find(sender =>
         sender.track && sender.track.kind === 'video'
       );
 
@@ -280,9 +280,9 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
     // Restore camera when screen sharing stops
     screenVideoTrack.onended = () => {
       console.log('📹 Screen share ended, switching back to camera');
-      
+
       if (!localStream) return;
-      
+
       const cameraVideoTrack = localStream.getVideoTracks()[0];
       if (!cameraVideoTrack) {
         console.error('❌ No camera video track found');
@@ -293,7 +293,7 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
         if (!peerData.peer) return;
 
         const senders = peerData.peer.getSenders();
-        const videoSender = senders.find(sender => 
+        const videoSender = senders.find(sender =>
           sender.track && sender.track.kind === 'video'
         );
 
