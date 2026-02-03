@@ -1,63 +1,70 @@
-import { useState, useCallback } from 'react';
+import { useState, useRef } from 'react';
 
-export const useCameraSwitch = (stream, setStream) => {
-  const [facingMode, setFacingMode] = useState('user'); // 'user' or 'environment'
-  const [isSwitching, setIsSwitching] = useState(false);
+export const useScreenShare = () => {
+  const [isSharing, setIsSharing] = useState(false);
+  const [screenStream, setScreenStream] = useState(null);
+  const screenStreamRef = useRef(null);
 
-  const switchCamera = useCallback(async () => {
-    if (isSwitching) return;
-    
-    setIsSwitching(true);
-    const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
-    
+  const startScreenShare = async () => {
     try {
-      // Stop current video track
-      if (stream) {
-        const videoTrack = stream.getVideoTracks()[0];
-        if (videoTrack) {
-          videoTrack.stop();
-        }
+      // Check if getDisplayMedia is supported
+      if (!navigator.mediaDevices.getDisplayMedia) {
+        console.error('❌ Screen sharing not supported on this device');
+        alert('Screen sharing is not supported on this device');
+        return null;
       }
 
-      // Get new stream with switched camera
-      const newStream = await navigator.mediaDevices.getUserMedia({
+      const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
-          facingMode: newFacingMode,
-          width: { min: 640, ideal: 1280, max: 1920 },
-          height: { min: 480, ideal: 720, max: 1080 },
+          cursor: 'always',
+          width: { ideal: 1920, max: 1920 },
+          height: { ideal: 1080, max: 1080 },
+          frameRate: { ideal: 30, max: 30 }
         },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
+        audio: false // Mobile often doesn't support audio in screen share
       });
 
-      // Keep existing audio track if it exists
-      if (stream) {
-        const audioTrack = stream.getAudioTracks()[0];
-        if (audioTrack) {
-          newStream.removeTrack(newStream.getAudioTracks()[0]);
-          newStream.addTrack(audioTrack);
-        }
-      }
+      console.log('✅ Screen share started:', {
+        video: stream.getVideoTracks().length,
+        audio: stream.getAudioTracks().length
+      });
 
-      setStream(newStream);
-      setFacingMode(newFacingMode);
-      setIsSwitching(false);
-      
-      console.log(`✅ Camera switched to: ${newFacingMode}`);
-      return newStream;
+      screenStreamRef.current = stream;
+      setScreenStream(stream);
+      setIsSharing(true);
+
+      // Handle when user stops sharing via browser UI
+      stream.getVideoTracks()[0].onended = () => {
+        console.log('📺 Screen share stopped by user');
+        stopScreenShare();
+      };
+
+      return stream;
     } catch (error) {
-      console.error('❌ Error switching camera:', error);
-      setIsSwitching(false);
+      console.error('❌ Error starting screen share:', error);
+      if (error.name === 'NotAllowedError') {
+        alert('Screen sharing permission denied');
+      } else if (error.name === 'NotSupportedError') {
+        alert('Screen sharing is not supported on this device');
+      }
+      setIsSharing(false);
       return null;
     }
-  }, [stream, facingMode, isSwitching, setStream]);
+  };
+
+  const stopScreenShare = () => {
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => track.stop());
+      screenStreamRef.current = null;
+      setScreenStream(null);
+      setIsSharing(false);
+    }
+  };
 
   return {
-    switchCamera,
-    facingMode,
-    isSwitching
+    isSharing,
+    screenStream,
+    startScreenShare,
+    stopScreenShare
   };
 };

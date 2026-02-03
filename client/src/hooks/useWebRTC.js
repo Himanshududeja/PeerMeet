@@ -58,19 +58,24 @@ export const useWebRTC = (roomId, socket, localStream, screenStream) => {
       });
 
       if (event.streams && event.streams[0]) {
-        // Store both peer connection and stream
+        // CRITICAL: Store the stream immediately
+        const existingPeerData = peersRef.current[userId];
         peersRef.current[userId] = {
-          peer: pc,
-          userName,
+          peer: existingPeerData?.peer || pc,
+          userName: existingPeerData?.userName || userName,
           stream: event.streams[0]
         };
         
         console.log(`✅ Stream stored for ${userId}:`, {
           audioTracks: event.streams[0].getAudioTracks().length,
-          videoTracks: event.streams[0].getVideoTracks().length
+          videoTracks: event.streams[0].getVideoTracks().length,
+          hasStream: !!peersRef.current[userId].stream
         });
         
-        updatePeers();
+        // Force update
+        setPeers({ ...peersRef.current });
+      } else {
+        console.error(`❌ No streams in ontrack event for ${userId}`);
       }
     };
 
